@@ -23,21 +23,12 @@ const allowedOrigins = [
   'https://socialboosts.co'  // Add this line - you need both www and non-www versions
 ];
 
+// Replace your current CORS configuration with this simpler version
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log('Blocked origin:', origin); // Add logging
-      callback(null, false); // Don't throw error, just block with proper CORS response
-    }
-  },
-  credentials: true,
+  origin: '*',  // Allow all origins during testing
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 const cookieParser = require('cookie-parser');
@@ -76,6 +67,10 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
+
+app.get('/test', (req, res) => {
+  res.send('API Running - Updated with CORS fix');
+});
 
 connectDB();
 
