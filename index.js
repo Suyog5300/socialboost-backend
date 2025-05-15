@@ -9,6 +9,7 @@ const campaignRoutes = require('./routes/campaignRoutes');
 const stripeRoutes = require('./routes/stripe');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const adminRoutes = require('./routes/adminRoutes'); // Assuming you have admin routes in a separate file
+const customBookings = require('./routes/customPlanBookingsRoutes');
 // const paymentRoutes = require('./routes/paymentRoutes');
 // Initialize app
 const app = express();
@@ -32,6 +33,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes); // Assuming admin routes are in userRoutes
+app.use('/api/custombookings', customBookings);
 // app.use('/api/payment', paymentRoutes);
 
 // Root route
