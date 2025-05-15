@@ -48,13 +48,23 @@ const sendEmail = async (options) => {
       }
     });
 
-    // Define email options
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || 'support@socialboost.com',
-      to: options.email,
-      subject: options.subject,
-      html: options.html
-    };
+    // // Define email options
+    // const mailOptions = {
+    //   from: process.env.EMAIL_FROM || 'support@socialboost.com',
+    //   to: options.email,
+    //   subject: options.subject,
+    //   html: options.html
+    // };
+
+    // Locate the mailOptions definition in the sendEmail function and modify it like this:
+const mailOptions = {
+  from: process.env.EMAIL_FROM || 'support@socialboost.com',
+  to: options.email || options.to, // Accept both options.email and options.to
+  subject: options.subject,
+  // Include both text and html options if they exist
+  ...(options.text ? { text: options.text } : {}),
+  ...(options.html ? { html: options.html } : {})
+};
 
     // Send email
     const info = await transporter.sendMail(mailOptions);
@@ -150,6 +160,242 @@ const getOTPEmailHtml = (firstName, otp) => {
         &copy; SocialBoost. All rights reserved.
       </p>
     </div>
+  `;
+};
+
+// Create this function in your emailService.js file
+
+/**
+ * Generate HTML template for strategy call confirmation
+ * @param {Object} booking - The booking details
+ * @param {string} meetingLink - The Google Meet link
+ * @returns {string} HTML email content
+ */
+const getStrategyCallConfirmationHtml = (booking, meetingLink) => {
+  const { companyName, preferredDate, preferredTime } = booking;
+  const formattedDate = new Date(preferredDate).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Strategy Call Confirmation</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9fafb; color: #374151;">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="min-width: 100%; background-color: #f9fafb;">
+        <tr>
+          <td align="center" style="padding: 40px 0;">
+            <table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+              <!-- Instagram-inspired gradient header -->
+              <tr>
+                <td>
+                  <div style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); height: 8px;"></div>
+                </td>
+              </tr>
+              
+              <!-- Logo and brand -->
+              <tr>
+                <td align="center" style="padding: 30px 40px 20px;">
+                  <img src="https://i.ibb.co/BVmxCNt/instagram-growth.png" alt="SocialBoost" width="200" style="display: block; max-width: 100%;">
+                </td>
+              </tr>
+              
+              <!-- Confirmation message -->
+              <tr>
+                <td align="center" style="padding: 0 40px 30px;">
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>
+                      <td align="center">
+                        <div style="background-color: #d1fae5; width: 80px; height: 80px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                          <div style="font-size: 40px;">✓</div>
+                        </div>
+                        <h1 style="color: #111827; font-size: 24px; font-weight: 700; margin: 0 0 15px;">Your Strategy Call is Confirmed!</h1>
+                        <p style="color: #6b7280; font-size: 16px; line-height: 24px; margin: 0 0 24px;">
+                          Thank you for booking a strategy call for our Custom Elite Plan. We're excited to discuss your Instagram growth goals!
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              
+              <!-- Meeting details -->
+              <tr>
+                <td style="padding: 0 40px;">
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f8fafc; border-radius: 8px; overflow: hidden; margin-bottom: 30px;">
+                    <tr>
+                      <td style="padding: 25px;">
+                        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                          <tr>
+                            <td>
+                              <h2 style="margin: 0 0 20px; color: #111827; font-size: 18px; font-weight: 600;">Meeting Details</h2>
+                              
+                              <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                                <tr>
+                                  <td style="padding-bottom: 15px;">
+                                    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                                      <tr>
+                                        <td width="24" valign="top">
+                                          <img src="https://i.ibb.co/7YGxzLb/calendar.png" alt="Date" width="20" style="margin-right: 10px;">
+                                        </td>
+                                        <td valign="top">
+                                          <div style="font-weight: 600; color: #111827;">${formattedDate}</div>
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td style="padding-bottom: 15px;">
+                                    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                                      <tr>
+                                        <td width="24" valign="top">
+                                          <img src="https://i.ibb.co/tZqWNqP/clock.png" alt="Time" width="20" style="margin-right: 10px;">
+                                        </td>
+                                        <td valign="top">
+                                          <div style="font-weight: 600; color: #111827;">${preferredTime}</div>
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td>
+                                    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                                      <tr>
+                                        <td width="24" valign="top">
+                                          <img src="https://i.ibb.co/6BwXJsC/video.png" alt="Meet" width="20" style="margin-right: 10px;">
+                                        </td>
+                                        <td valign="top">
+                                          <div style="font-weight: 600; color: #111827;">
+                                            <a href="${meetingLink}" target="_blank" style="color: #8B5CF6; text-decoration: none;">Join Google Meet</a>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              
+              <!-- What to expect -->
+              <tr>
+                <td style="padding: 0 40px 30px;">
+                  <h3 style="color: #111827; font-size: 16px; margin: 0 0 15px;">What to expect:</h3>
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 25px;">
+                    <tr>
+                      <td style="padding-bottom: 15px;">
+                        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                          <tr>
+                            <td width="30" valign="top">
+                              <div style="width: 24px; height: 24px; background-color: #8B5CF6; border-radius: 50%; color: white; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: bold;">1</div>
+                            </td>
+                            <td style="padding-left: 10px; color: #4b5563; font-size: 14px; line-height: 21px;">
+                              We'll discuss your Instagram growth goals and current challenges.
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom: 15px;">
+                        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                          <tr>
+                            <td width="30" valign="top">
+                              <div style="width: 24px; height: 24px; background-color: #8B5CF6; border-radius: 50%; color: white; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: bold;">2</div>
+                            </td>
+                            <td style="padding-left: 10px; color: #4b5563; font-size: 14px; line-height: 21px;">
+                              Our team will create a custom growth strategy tailored to your specific needs.
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                          <tr>
+                            <td width="30" valign="top">
+                              <div style="width: 24px; height: 24px; background-color: #8B5CF6; border-radius: 50%; color: white; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: bold;">3</div>
+                            </td>
+                            <td style="padding-left: 10px; color: #4b5563; font-size: 14px; line-height: 21px;">
+                              You'll receive a detailed proposal with pricing options based on your goals.
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  
+                  <p style="color: #4b5563; font-size: 14px; line-height: 21px; margin-bottom: 0;">
+                    This meeting has been added to your Google Calendar. You'll receive a reminder notification before it starts.
+                  </p>
+                </td>
+              </tr>
+              
+              <!-- Preparation tips -->
+              <tr>
+                <td style="padding: 0 40px 30px;">
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #EEF2FF; border-radius: 8px; overflow: hidden;">
+                    <tr>
+                      <td style="padding: 20px;">
+                        <h3 style="color: #4F46E5; font-size: 16px; margin: 0 0 10px;">Quick preparation tips:</h3>
+                        <ul style="color: #4b5563; font-size: 14px; line-height: 21px; margin: 0; padding-left: 20px;">
+                          <li style="margin-bottom: 8px;">Have your Instagram profile ready to share</li>
+                          <li style="margin-bottom: 8px;">Think about your specific growth goals (followers, engagement, etc.)</li>
+                          <li>Prepare any questions you have about our process</li>
+                        </ul>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              
+              <!-- Need to reschedule -->
+              <tr>
+                <td style="padding: 0 40px 40px; text-align: center;">
+                  <p style="color: #6b7280; font-size: 14px; margin-bottom: 10px;">
+                    Need to reschedule?
+                  </p>
+                  <a href="mailto:support@socialboost.com" style="color: #8B5CF6; font-weight: 500; text-decoration: none;">Contact us</a>
+                </td>
+              </tr>
+              
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f8fafc; padding: 30px 40px; border-top: 1px solid #e5e7eb;">
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>
+                      <td align="center">
+                        <p style="margin: 0 0 10px; color: #9ca3af; font-size: 12px;">© 2025 SocialBoost. All rights reserved.</p>
+                        <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                          1234 Social Media Ave., San Francisco, CA 94107
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
   `;
 };
 
@@ -472,5 +718,6 @@ module.exports = {
   sendOTPEmail,
   getOTPEmailHtml,
   sendSubscriptionConfirmationEmail,
-  getSubscriptionConfirmationEmailHtml
+  getSubscriptionConfirmationEmailHtml,
+    getStrategyCallConfirmationHtml
 };
