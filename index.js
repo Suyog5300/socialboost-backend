@@ -56,26 +56,34 @@ const mongoose = require('mongoose');
 
 // Load env variables
 dotenv.config();
+app.get('/test', (req, res) => {
+  res.send('API Running - Updated with CORS fix');
+});
 
 // Database connection
+// Modify your connectDB function
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/social-media-marketing');
     console.log('MongoDB Connected...');
   } catch (err) {
     console.error('Failed to connect to MongoDB', err);
-    process.exit(1);
+    // Don't exit the process - let the app continue running
+    // process.exit(1); <- Remove or comment out this line if it exists
+    
+    // Keep trying to reconnect periodically
+    console.log('Will retry MongoDB connection in 30 seconds...');
+    setTimeout(connectDB, 30000); // Try again in 30 seconds
   }
 };
 
-app.get('/test', (req, res) => {
-  res.send('API Running - Updated with CORS fix');
+// Make sure the server starts regardless of MongoDB connection status
+const PORT = process.env.PORT || 8080; // Note: DigitalOcean uses port 8080 by default
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
-connectDB();
-
-// Initialize server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Add a simple health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
 });
