@@ -19,7 +19,8 @@ app.use('/api/stripe/webhooks/stripe', express.raw({ type: 'application/json' })
 // Modify your CORS configuration to handle multiple origins
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://www.socialboosts.co'
+  'https://www.socialboosts.co',
+  'https://socialboosts.co'  // Add this line - you need both www and non-www versions
 ];
 
 app.use(cors({
@@ -30,14 +31,14 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('Blocked origin:', origin); // Add logging
+      callback(null, false); // Don't throw error, just block with proper CORS response
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
 
 const cookieParser = require('cookie-parser');
 app.use(cookieParser());
