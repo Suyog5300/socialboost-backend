@@ -23,12 +23,21 @@ const allowedOrigins = [
   'https://socialboosts.co'  // Add this line - you need both www and non-www versions
 ];
 
-// Replace your current CORS configuration with this simpler version
 app.use(cors({
-  origin: '*',  // Allow all origins during testing
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin); // Add logging
+      callback(null, false); // Don't throw error, just block with proper CORS response
+    }
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 const cookieParser = require('cookie-parser');
@@ -56,34 +65,27 @@ const mongoose = require('mongoose');
 
 // Load env variables
 dotenv.config();
-app.get('/test', (req, res) => {
-  res.send('API Running - Updated with CORS fix');
-});
 
 // Database connection
-// Modify your connectDB function
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/social-media-marketing');
     console.log('MongoDB Connected...');
   } catch (err) {
     console.error('Failed to connect to MongoDB', err);
-    // Don't exit the process - let the app continue running
-    // process.exit(1); <- Remove or comment out this line if it exists
-    
-    // Keep trying to reconnect periodically
-    console.log('Will retry MongoDB connection in 30 seconds...');
-    setTimeout(connectDB, 30000); // Try again in 30 seconds
+    process.exit(1);
   }
 };
-
-// Make sure the server starts regardless of MongoDB connection status
-const PORT = process.env.PORT || 8080; // Note: DigitalOcean uses port 8080 by default
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
 
 // Add a simple health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
+});
+
+connectDB();
+
+// Initialize server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
