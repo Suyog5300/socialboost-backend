@@ -302,6 +302,7 @@ router.get('/api/user-profile', auth, (req, res) => {
 // @route   GET /api/auth/verify-email/:token
 // @desc    Verify email address
 // @access  Public
+// In your auth.js file
 router.get('/verify-email/:token', async (req, res) => {
   try {
     // Hash the token from params
@@ -316,9 +317,10 @@ router.get('/verify-email/:token', async (req, res) => {
       emailVerificationExpires: { $gt: Date.now() }
     });
 
-    // if (!user) {
-    //   return res.status(400).json({ message: 'Invalid or expired token' });
-    // }
+    // This check is critical - do not remove it
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
 
     // Update user verification status
     user.emailVerified = true;
