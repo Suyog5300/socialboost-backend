@@ -46,28 +46,13 @@ router.post(
         lastName,
         email,
         password,
-        role: UserRole.USER // Default role
+        role: UserRole.USER
       });
 
       // Generate email verification token
       const verificationToken = user.generateEmailVerificationToken();
 
       await user.save();
-
-      // Create verification URL - Use frontend port 5173 for Vite
-      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verificationToken}`;
-
-      // Send verification email - Use try/catch to prevent email errors from breaking registration
-      try {
-        await sendEmail({
-          email: user.email,
-          subject: 'Please verify your email',
-          html: getVerificationEmailHtml(user.firstName, verificationUrl)
-        });
-      } catch (emailError) {
-        // Log the error but continue with registration
-        console.error('Email sending failed, but registration will continue:', emailError.message);
-      }
 
       // Generate JWT token
       const token = user.generateAuthToken();
@@ -90,11 +75,30 @@ router.post(
       if (process.env.NODE_ENV !== 'production') {
         responseData.devInfo = {
           note: 'This information is only included in development mode',
-          verificationUrl: verificationUrl
+          verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verificationToken}`
         };
       }
 
+      // Send the response first
       res.status(201).json(responseData);
+
+      // Create verification URL - Use frontend port 5173 for Vite
+      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verificationToken}`;
+
+      // Send verification email after response - non-blocking
+      // Use try/catch to prevent email errors from affecting anything else
+      try {
+        sendEmail({
+          email: user.email,
+          subject: 'Please verify your email',
+          html: getVerificationEmailHtml(user.firstName, verificationUrl)
+        }).catch(emailError => {
+          console.error('Email sending failed:', emailError.message);
+        });
+      } catch (emailError) {
+        console.error('Email setup failed:', emailError.message);
+      }
+
     } catch (error) {
       console.error('Error in register:', error);
       res.status(500).json({ message: 'Server error' });
@@ -312,9 +316,9 @@ router.get('/verify-email/:token', async (req, res) => {
       emailVerificationExpires: { $gt: Date.now() }
     });
 
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid or expired token' });
-    }
+    // if (!user) {
+    //   return res.status(400).json({ message: 'Invalid or expired token' });
+    // }
 
     // Update user verification status
     user.emailVerified = true;
@@ -323,12 +327,12 @@ router.get('/verify-email/:token', async (req, res) => {
 
     await user.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Email verified successfully! You can now log in.'
     });
   } catch (error) {
     console.error('Error verifying email:', error);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 
