@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { User, UserRole } = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendEmail, getVerificationEmailHtml, getPasswordResetEmailHtml, sendOTPEmail } = require('../utils/emailService');
+const passport = require('passport');
 
 const router = express.Router();
 
@@ -509,5 +510,43 @@ router.get('/me', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// Add these routes to your auth.js file
+
+// Google OAuth routes
+router.get(
+  '/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  (req, res) => {
+    // Generate JWT token
+    const token = req.user.generateAuthToken();
+    
+    // Set cookie with the token
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
+    // Response data with user info
+    const userData = {
+      id: req.user._id,
+      firstName: req.user.firstName,
+      lastName: req.user.lastName,
+      email: req.user.email,
+      role: req.user.role,
+      emailVerified: req.user.emailVerified
+    };
+    
+    // Redirect to frontend with token in query param for client to store
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth-success?token=${token}`);
+  }
+);
 
 module.exports = router;

@@ -6,6 +6,13 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
+// In your server.js after other requires:
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const { User, UserRole } = require('./models/User');
+const crypto = require('crypto');
+
+
 // Load env variables
 dotenv.config();
 
@@ -41,6 +48,8 @@ app.use(cors({
 // Standard middleware
 app.use(express.json());
 app.use(cookieParser());
+// Initialize passport
+app.use(passport.initialize());
 
 // Fix route paths to match your actual file names
 app.use('/api/auth', require('./routes/authRoutes')); // Changed from authRoutes to auth
@@ -76,6 +85,45 @@ const connectDB = async () => {
 
 // Call connectDB but don't wait for it
 connectDB();
+
+// Configure Google strategy
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: '/api/auth/google/callback',
+      scope: ['profile', 'email']
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        // Check if user already exists
+        let user = await User.findOne({ email: profile.emails[0].value });
+        
+        if (user) {
+          return done(null, user);
+        }
+        
+        // Create new user with Google profile info
+        user = new User({
+          firstName: profile.name.givenName,
+          lastName: profile.name.familyName,
+          email: profile.emails[0].value,
+          password: crypto.randomBytes(16).toString('hex'), // Random password
+          emailVerified: true, // Auto-verify since Google verified the email
+          role: UserRole.USER
+        });
+        
+        await user.save();
+        return done(null, user);
+      } catch (error) {
+        return done(error, null);
+      }
+    }
+  )
+);
+
+
 
 // Initialize server
 const PORT = process.env.PORT || 8080; // DigitalOcean uses 8080 by default
