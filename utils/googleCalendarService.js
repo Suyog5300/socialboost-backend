@@ -1,10 +1,5 @@
-// 1. First, install the Google API client library
-// npm install googleapis
-
-// 2. Create a new file: utils/googleCalendarService.js
-
+// /backend/utils/googleCalendarService.js
 const { google } = require('googleapis');
-const calendar = google.calendar('v3');
 
 // Create OAuth2 client
 const createOAuth2Client = () => {
@@ -15,25 +10,34 @@ const createOAuth2Client = () => {
   );
 };
 
-// This function creates a meeting and returns the meeting link
-const createMeeting = async (
-  summary,
-  description,
-  startDateTime,
-  endDateTime,
-  attendees,
-  timeZone = 'America/New_York'
-) => {
+// Initialize Google Calendar API
+const calendar = google.calendar('v3');
+
+/**
+ * Create a Google Calendar event with Google Meet link
+ * @param {Object} eventDetails - Event details
+ * @returns {Object} - Event data with meeting link
+ */
+const createCalendarEvent = async (eventDetails) => {
   try {
     const oauth2Client = createOAuth2Client();
     
-    // Set credentials - use service account for backend applications
-    // If you're using a service account:
+    // Set credentials using service account or refresh token
     oauth2Client.setCredentials({
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      access_token: process.env.GOOGLE_ACCESS_TOKEN
     });
 
-    // Create event with conferencing data
+    const {
+      summary,
+      description,
+      startDateTime,
+      endDateTime,
+      attendeeEmails = [],
+      timeZone = 'America/New_York'
+    } = eventDetails;
+
+    // Create the event object
     const event = {
       summary,
       description,
@@ -45,175 +49,172 @@ const createMeeting = async (
         dateTime: endDateTime,
         timeZone,
       },
-      attendees: attendees.map(email => ({ email })),
+      attendees: attendeeEmails.map(email => ({ email })),
       conferenceData: {
         createRequest: {
-          requestId: Math.random().toString(36).substring(2),
+          requestId: Math.random().toString(36).substring(2, 15),
           conferenceSolutionKey: {
             type: 'hangoutsMeet'
           }
         }
-      }
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'email', minutes: 24 * 60 }, // 24 hours before
+          { method: 'popup', minutes: 30 }, // 30 minutes before
+        ],
+      },
     };
 
-    // Insert event to the calendar
-    const { data } = await calendar.events.insert({
+    // Insert the event
+    const response = await calendar.events.insert({
       auth: oauth2Client,
-      calendarId: 'primary', // Use your calendar ID or 'primary'
+      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
       resource: event,
-      conferenceDataVersion: 1
+      conferenceDataVersion: 1,
+      sendUpdates: 'all' // Send calendar invites to attendees
     });
 
     // Extract the Google Meet link
-    const meetLink = data.conferenceData?.entryPoints?.find(
+    const meetLink = response.data.conferenceData?.entryPoints?.find(
       entryPoint => entryPoint.entryPointType === 'video'
     )?.uri;
 
     return {
-      eventId: data.id,
-      meetLink: meetLink || 'No meeting link generated',
-      htmlLink: data.htmlLink, // Link to the event in Google Calendar
+      success: true,
+      eventId: response.data.id,
+      meetLink: meetLink || null,
+      htmlLink: response.data.htmlLink,
+      eventData: response.data
     };
+
   } catch (error) {
     console.error('Error creating Google Calendar event:', error);
-    throw new Error('Failed to create meeting: ' + error.message);
+    
+    // Return error details
+    return {
+      success: false,
+      error: error.message,
+      details: error.response?.data || null
+    };
+  }
+};
+
+/**
+ * Update an existing Google Calendar event
+ * @param {string} eventId - Event ID to update
+ * @param {Object} updateData - Data to update
+ * @returns {Object} - Updated event data
+ */
+const updateCalendarEvent = async (eventId, updateData) => {
+  try {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      access_token: process.env.GOOGLE_ACCESS_TOKEN
+    });
+
+    const response = await calendar.events.patch({
+      auth: oauth2Client,
+      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+      eventId: eventId,
+      resource: updateData,
+      sendUpdates: 'all'
+    });
+
+    return {
+      success: true,
+      eventData: response.data
+    };
+
+  } catch (error) {
+    console.error('Error updating Google Calendar event:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Delete a Google Calendar event
+ * @param {string} eventId - Event ID to delete
+ * @returns {Object} - Success status
+ */
+const deleteCalendarEvent = async (eventId) => {
+  try {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      access_token: process.env.GOOGLE_ACCESS_TOKEN
+    });
+
+    await calendar.events.delete({
+      auth: oauth2Client,
+      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+      eventId: eventId,
+      sendUpdates: 'all'
+    });
+
+    return {
+      success: true,
+      message: 'Event deleted successfully'
+    };
+
+  } catch (error) {
+    console.error('Error deleting Google Calendar event:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Get available time slots (optional - for advanced booking)
+ * @param {string} startDate - Start date for availability check
+ * @param {string} endDate - End date for availability check
+ * @returns {Array} - Available time slots
+ */
+const getAvailableTimeSlots = async (startDate, endDate) => {
+  try {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      access_token: process.env.GOOGLE_ACCESS_TOKEN
+    });
+
+    const response = await calendar.freebusy.query({
+      auth: oauth2Client,
+      resource: {
+        timeMin: startDate,
+        timeMax: endDate,
+        items: [{ id: process.env.GOOGLE_CALENDAR_ID || 'primary' }]
+      }
+    });
+
+    const busyTimes = response.data.calendars[process.env.GOOGLE_CALENDAR_ID || 'primary'].busy;
+    
+    // You can process busy times to generate available slots
+    return {
+      success: true,
+      busyTimes,
+      // Add logic to generate available slots based on busy times
+    };
+
+  } catch (error) {
+    console.error('Error getting available time slots:', error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 };
 
 module.exports = {
-  createMeeting
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+  getAvailableTimeSlots
 };
-
-// 3. Update your bookings route to use this service
-// In routes/bookings.js:
-
-const { createMeeting } = require('../utils/googleCalendarService');
-const { sendEmail } = require('../utils/emailService');
-
-// Inside the POST handler for custom-plan bookings:
-router.post('/custom-plan', auth, async (req, res) => {
-  try {
-    const {
-      planName,
-      companyName,
-      website,
-      instagramHandle,
-      currentFollowers,
-      goalFollowers,
-      targetAudience,
-      preferredDate,
-      preferredTime,
-      additionalInfo
-    } = req.body;
-
-    // Parse the date and time
-    const startDateTime = new Date(`${preferredDate}T${preferredTime}`);
-    
-    // Set the meeting duration (e.g., 30 minutes)
-    const endDateTime = new Date(startDateTime);
-    endDateTime.setMinutes(startDateTime.getMinutes() + 30);
-    
-    // Create the meeting
-    const meetingResult = await createMeeting(
-      `Strategy Call: ${companyName}`,
-      `Custom Plan Strategy Call with ${companyName} (@${instagramHandle}).\n\nAdditional Info: ${additionalInfo || 'None'}`,
-      startDateTime.toISOString(),
-      endDateTime.toISOString(),
-      [req.user.email] // Add the user's email as an attendee
-    );
-
-    // Create a new booking with the meeting link
-    const booking = new CustomPlanBooking({
-      user: req.user.id,
-      planName,
-      companyName,
-      website,
-      instagramHandle,
-      currentFollowers,
-      goalFollowers,
-      targetAudience,
-      preferredDate: startDateTime,
-      preferredTime,
-      additionalInfo,
-      status: 'scheduled', // Automatically scheduled since we created the meeting
-      meetingLink: meetingResult.meetLink,
-      googleCalendarEventId: meetingResult.eventId
-    });
-
-    await booking.save();
-
-    // Send confirmation email with the meeting link
-    const emailHTML = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e9e9e9; border-radius: 5px;">
-        <h2 style="color: #333; text-align: center;">Your Strategy Call is Confirmed!</h2>
-        
-        <p>Thank you for booking a strategy call for our Custom Elite Plan!</p>
-        
-        <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <p><strong>Date:</strong> ${startDateTime.toLocaleDateString()}</p>
-          <p><strong>Time:</strong> ${preferredTime}</p>
-          <p><strong>Meeting Link:</strong> <a href="${meetingResult.meetLink}" target="_blank">Join Google Meet</a></p>
-        </div>
-        
-        <p>This meeting has been added to your Google Calendar. You'll receive a notification before the meeting starts.</p>
-        
-        <p>We're looking forward to discussing your Instagram growth goals and creating a custom plan that works for you!</p>
-        
-        <p>Best regards,<br>The SocialBoost Team</p>
-      </div>
-    `;
-
-    await sendEmail({
-      email: req.user.email,
-      subject: 'Your Strategy Call is Confirmed!',
-      html: emailHTML
-    });
-
-    // Notify admin team
-    const admins = await User.find({ role: { $in: [UserRole.ADMIN, UserRole.SUPERADMIN] } });
-    
-    if (admins.length > 0) {
-      const adminEmails = admins.map(admin => admin.email);
-      
-      const adminEmailHTML = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e9e9e9; border-radius: 5px;">
-          <h2 style="color: #333;">New Strategy Call Booking</h2>
-          
-          <p>A new strategy call has been booked and automatically scheduled.</p>
-          
-          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p><strong>Company/Brand:</strong> ${companyName}</p>
-            <p><strong>Instagram:</strong> @${instagramHandle}</p>
-            <p><strong>Date:</strong> ${startDateTime.toLocaleDateString()}</p>
-            <p><strong>Time:</strong> ${preferredTime}</p>
-            <p><strong>Meeting Link:</strong> <a href="${meetingResult.meetLink}" target="_blank">Join Google Meet</a></p>
-            <p><strong>Additional Info:</strong> ${additionalInfo || 'None'}</p>
-          </div>
-          
-          <p>This meeting has been added to the company calendar.</p>
-        </div>
-      `;
-      
-      await sendEmail({
-        email: adminEmails,
-        subject: 'New Custom Plan Strategy Call Booking',
-        html: adminEmailHTML
-      });
-    }
-
-    res.status(201).json({
-      success: true,
-      booking: {
-        id: booking._id,
-        planName: booking.planName,
-        preferredDate: booking.preferredDate,
-        preferredTime: booking.preferredTime,
-        status: booking.status,
-        meetingLink: booking.meetingLink
-      }
-    });
-  } catch (error) {
-    console.error('Error booking custom plan strategy call:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
