@@ -25,7 +25,8 @@ app.use('/api/stripe/webhooks/stripe', express.raw({ type: 'application/json' })
 const allowedOrigins = [
   'http://localhost:5173',
   'https://www.socialboosts.co',
-  'https://socialboosts.co'  // Add this line - you need both www and non-www versions
+  'https://socialboosts.co',
+  'https://whale-app-d6vle.ondigitalocean.app', // Your DigitalOcean backend
 ];
 
 app.use(cors({
@@ -87,12 +88,17 @@ const connectDB = async () => {
 connectDB();
 
 // Configure Google strategy
+// Configure Google strategy - UPDATE THIS SECTION
+// Configure Google strategy
 passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: '/api/auth/google/callback',
+      // Use the current DigitalOcean URL since custom domain isn't active yet
+      callbackURL: process.env.NODE_ENV === 'production' 
+        ? 'https://whale-app-d6vle.ondigitalocean.app/api/auth/google/callback'
+        : 'http://localhost:8080/api/auth/google/callback',
       scope: ['profile', 'email']
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -109,8 +115,8 @@ passport.use(
           firstName: profile.name.givenName,
           lastName: profile.name.familyName,
           email: profile.emails[0].value,
-          password: crypto.randomBytes(16).toString('hex'), // Random password
-          emailVerified: true, // Auto-verify since Google verified the email
+          password: crypto.randomBytes(16).toString('hex'),
+          emailVerified: true,
           role: UserRole.USER
         });
         
