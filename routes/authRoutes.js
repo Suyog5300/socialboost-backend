@@ -6,6 +6,8 @@ const { User, UserRole } = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendEmail, getVerificationEmailHtml, getPasswordResetEmailHtml, sendOTPEmail } = require('../utils/emailService');
 const passport = require('passport');
+const Subscription = require('../models/Subscription');
+const Campaign = require('../models/Campaign');
 
 const router = express.Router();
 
@@ -107,6 +109,44 @@ router.post(
   }
 );
 
+// Helper function to determine redirect URL based on user data
+const getRedirectUrl = async (user) => {
+  try {
+    // For admin and superadmin users, redirect to admin dashboard
+    if (user.role === 'admin' || user.role === 'superadmin') {
+      return '/admin';
+    }
+    
+    // For regular users, check if they have campaigns or subscriptions
+    if (user.role === 'user') {
+      // Check for active subscription
+      const hasActiveSubscription = await Subscription.findOne({
+        user: user._id,
+        status: 'active'
+      });
+      
+      // Check for any campaigns
+      const hasCampaigns = await Campaign.findOne({
+        user: user._id
+      });
+      
+      // If user has subscription or campaigns, redirect to main website
+      if (hasActiveSubscription || hasCampaigns) {
+        return '/'; // Main website
+      } else {
+        // No subscription or campaigns, redirect to campaign preferences
+        return '/pricing';
+      }
+    }
+    
+    // Default fallback
+    return '/dashboard';
+  } catch (error) {
+    console.error('Error determining redirect URL:', error);
+    return '/dashboard'; // Fallback
+  }
+};
+
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
 // @access  Public
@@ -119,7 +159,6 @@ router.post(
     body('password').if(body('otp').not().exists()).exists().withMessage('Password is required'),
     body('otp').optional().isLength({ min: 6, max: 6 }).withMessage('OTP must be a 6-digit code')
   ],
-
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -172,12 +211,15 @@ router.post(
         // Set cookie with the token
         res.cookie('token', token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production', // secure in production
-          sameSite: 'lax', // Helps with CSRF
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
-        // Return full user data after successful authentication
+        // Determine redirect URL based on user role and data
+        const redirectUrl = await getRedirectUrl(user);
+
+        // Return full user data after successful authentication with redirect URL
         return res.json({
           token,
           user: {
@@ -187,7 +229,8 @@ router.post(
             email: user.email,
             role: user.role,
             emailVerified: user.emailVerified
-          }
+          },
+          redirectUrl // Add this field for conditional redirects
         });
       } 
       // If no OTP, verify password
@@ -522,10 +565,12 @@ router.get(
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
+// Update your Google callback handler in /backend/routes/authRoutes.js
+
 router.get(
   '/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: '/login' }),
-  (req, res) => {
+  async (req, res) => {
     try {
       // Generate JWT token
       const token = req.user.generateAuthToken();
@@ -538,11 +583,14 @@ router.get(
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
       
+      // Determine redirect URL based on user role and data
+      const redirectUrl = await getRedirectUrl(req.user);
+      
       // Use environment variable for frontend URL
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
       
-      // Redirect to frontend with token
-      res.redirect(`${frontendUrl}/auth-success?token=${token}`);
+      // Redirect to frontend with token and redirect URL
+      res.redirect(`${frontendUrl}/auth-success?token=${token}&redirectUrl=${encodeURIComponent(redirectUrl)}`);
     } catch (error) {
       console.error('Google auth callback error:', error);
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';

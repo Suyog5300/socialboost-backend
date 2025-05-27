@@ -60,6 +60,7 @@ app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/custombookings', require('./routes/customPlanBookingsRoutes'));
+app.use('/api/myOrders', require('./routes/userOrdersRoutes')); 
 
 // Root route with version for debugging
 app.get('/', (req, res) => {
@@ -90,6 +91,47 @@ connectDB();
 // Configure Google strategy
 // Configure Google strategy - UPDATE THIS SECTION
 // Configure Google strategy
+// passport.use(
+//   new GoogleStrategy(
+//     {
+//       clientID: process.env.GOOGLE_CLIENT_ID,
+//       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+//       // Use the current DigitalOcean URL since custom domain isn't active yet
+//       callbackURL: process.env.NODE_ENV === 'production' 
+//         ? 'https://whale-app-d6vle.ondigitalocean.app/api/auth/google/callback'
+//         : 'http://localhost:5000/api/auth/google/callback',
+//       scope: ['profile', 'email']
+//     },
+//     async (accessToken, refreshToken, profile, done) => {
+//       try {
+//         // Check if user already exists
+//         let user = await User.findOne({ email: profile.emails[0].value });
+        
+//         if (user) {
+//           return done(null, user);
+//         }
+        
+//         // Create new user with Google profile info
+//         user = new User({
+//           firstName: profile.name.givenName,
+//           lastName: profile.name.familyName,
+//           email: profile.emails[0].value,
+//           password: crypto.randomBytes(16).toString('hex'),
+//           emailVerified: true,
+//           role: UserRole.USER
+//         });
+        
+//         await user.save();
+//         return done(null, user);
+//       } catch (error) {
+//         return done(error, null);
+//       }
+//     }
+//   )
+// );
+
+// Update your Google Strategy configuration in server.js
+
 passport.use(
   new GoogleStrategy(
     {
@@ -98,7 +140,7 @@ passport.use(
       // Use the current DigitalOcean URL since custom domain isn't active yet
       callbackURL: process.env.NODE_ENV === 'production' 
         ? 'https://whale-app-d6vle.ondigitalocean.app/api/auth/google/callback'
-        : 'http://localhost:8080/api/auth/google/callback',
+        : 'http://localhost:5000/api/auth/google/callback',
       scope: ['profile', 'email']
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -107,16 +149,18 @@ passport.use(
         let user = await User.findOne({ email: profile.emails[0].value });
         
         if (user) {
+          // User exists, return the user for login flow
           return done(null, user);
         }
         
         // Create new user with Google profile info
+        // This is a new registration via Google
         user = new User({
           firstName: profile.name.givenName,
           lastName: profile.name.familyName,
           email: profile.emails[0].value,
-          password: crypto.randomBytes(16).toString('hex'),
-          emailVerified: true,
+          password: crypto.randomBytes(16).toString('hex'), // Random password since they use Google
+          emailVerified: true, // Google emails are already verified
           role: UserRole.USER
         });
         
