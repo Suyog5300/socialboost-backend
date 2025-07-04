@@ -26,7 +26,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://www.socialboosts.co',
   'https://socialboosts.co',
-  'https://whale-app-d6vle.ondigitalocean.app',
+  // 'https://whale-app-d6vle.ondigitalocean.app',
   'https://socialboost-3nfby.ondigitalocean.app', // Your DigitalOcean backend
 ];
 
@@ -141,13 +141,14 @@ app.post('/api/meta-conversions', async (req, res) => {
 // Make MongoDB connection resilient
 const connectDB = async () => {
   try {
+    console.log('Connecting to MongoDB with URI:', process.env.MONGO_URI ? 'URI is set' : 'URI is missing');
+    console.log('URI length:', process.env.MONGO_URI?.length);
     await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/social-media-marketing');
     console.log('MongoDB Connected...');
   } catch (err) {
     console.error('Failed to connect to MongoDB', err);
-    // Don't exit the process - let the app continue running
     console.log('Will retry MongoDB connection in 30 seconds...');
-    setTimeout(connectDB, 30000); // Try again in 30 seconds
+    setTimeout(connectDB, 30000);
   }
 };
 
