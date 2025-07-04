@@ -26,7 +26,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://www.socialboosts.co',
   'https://socialboosts.co',
-  'https://whale-app-d6vle.ondigitalocean.app', // Your DigitalOcean backend
+  'https://whale-app-d6vle.ondigitalocean.app',
+  'https://socialboost-3nfby.ondigitalocean.app', // Your DigitalOcean backend
 ];
 
 app.use(cors({
@@ -70,6 +71,71 @@ app.get('/', (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
+});
+
+// Hash function for server-side
+const hashData = (data) => {
+  return crypto.createHash('sha256').update(data).digest('hex');
+};
+
+// Endpoint for Meta Conversions API
+app.post('/api/meta-conversions', async (req, res) => {
+  try {
+    const { pixelId, eventName, eventParams } = req.body;
+    
+    // Get access token from environment variables
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    
+    // Properly hash data on server side if not already hashed
+    // This ensures data is always properly hashed before sending to Meta
+    if (eventParams.em && eventParams.em.length !== 64) {
+      eventParams.em = hashData(eventParams.em);
+    }
+    if (eventParams.fn && eventParams.fn.length !== 64) {
+      eventParams.fn = hashData(eventParams.fn);
+    }
+    // ...repeat for other PII fields...
+    
+    // Prepare data for Meta
+    const data = {
+      data: [{
+        event_name: eventName,
+        event_time: eventParams.event_time,
+        action_source: eventParams.action_source,
+        user_data: {
+          client_ip_address: req.ip,
+          client_user_agent: eventParams.client_user_agent,
+          fbp: eventParams.fbp,
+          fbc: eventParams.fbc,
+          em: eventParams.em,
+          fn: eventParams.fn,
+          ln: eventParams.ln,
+          ph: eventParams.ph,
+          ct: eventParams.ct,
+          st: eventParams.st,
+          country: eventParams.country
+        },
+        custom_data: {
+          value: eventParams.value,
+          currency: eventParams.currency,
+          content_ids: eventParams.content_ids,
+          content_type: eventParams.content_type
+        }
+      }],
+      access_token: accessToken
+    };
+    
+    // Send to Meta
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/${pixelId}/events`,
+      data
+    );
+    
+    res.status(200).json({ success: true, data: response.data });
+  } catch (error) {
+    console.error('Error sending to Meta Conversions API:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Make MongoDB connection resilient
@@ -139,7 +205,8 @@ passport.use(
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       // Use the current DigitalOcean URL since custom domain isn't active yet
       callbackURL: process.env.NODE_ENV === 'production' 
-        ? 'https://whale-app-d6vle.ondigitalocean.app/api/auth/google/callback'
+        // ? 'https://whale-app-d6vle.ondigitalocean.app/api/auth/google/callback'
+        ? 'https://socialboost-3nfby.ondigitalocean.app/api/auth/google/callback'
         : 'http://localhost:5000/api/auth/google/callback',
       scope: ['profile', 'email']
     },
