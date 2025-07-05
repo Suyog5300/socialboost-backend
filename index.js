@@ -11,6 +11,8 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { User, UserRole } = require('./models/User');
 const crypto = require('crypto');
+// Add this at the top of your server.js file
+const axios = require('axios');
 
 
 // Load env variables
@@ -62,6 +64,10 @@ app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/custombookings', require('./routes/customPlanBookingsRoutes'));
 app.use('/api/myOrders', require('./routes/userOrdersRoutes')); 
+const metaEventsRoutes = require('./routes/metaEvents');
+
+// Add this line where you register other routes
+app.use('/api', metaEventsRoutes);
 
 // Root route with version for debugging
 app.get('/', (req, res) => {
