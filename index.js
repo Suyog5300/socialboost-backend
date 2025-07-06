@@ -143,6 +143,12 @@ app.post('/api/meta-conversions', async (req, res) => {
   }
 });
 
+// Add to server.js
+app.get('/api/meta-debug', (req, res) => {
+  console.log('Meta debug endpoint accessed');
+  res.status(200).json({ success: true, message: 'Meta Conversions API is accessible' });
+});
+
 // Make MongoDB connection resilient
 const connectDB = async () => {
   try {
