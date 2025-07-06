@@ -28,8 +28,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://www.socialboosts.co',
   'https://socialboosts.co',
-  // 'https://whale-app-d6vle.ondigitalocean.app',
-  'https://socialboost-3nfby.ondigitalocean.app', // Your DigitalOcean backend
+  'https://socialboost-3nfby.ondigitalocean.app'
 ];
 
 app.use(cors({
