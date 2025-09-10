@@ -7,6 +7,7 @@ const Subscription = require('../models/Subscription');
 const Campaign = require('../models/Campaign');
 const Payment = require('../models/Payment');
 const mongoose = require('mongoose');
+const { body, validationResult } = require('express-validator');
 
 // @route   GET /api/admin/users
 // @desc    Get all users with their subscription, campaign, and payment data
@@ -141,6 +142,101 @@ router.get('/users', [auth, authorize(UserRole.ADMIN, UserRole.SUPERADMIN)], asy
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// Add this route to your /backend/routes/admin.js file
+
+// @route   POST /api/admin/users
+// @desc    Create a new user
+// @access  Private (Admin, SuperAdmin)
+router.post('/users', [
+  auth, 
+  authorize(UserRole.ADMIN, UserRole.SUPERADMIN),
+  // Validation middleware
+  body('firstName').notEmpty().withMessage('First name is required'),
+  body('lastName').notEmpty().withMessage('Last name is required'),
+  body('email').isEmail().withMessage('Please include a valid email'),
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
+  body('role')
+    .optional()
+    .isIn(Object.values(UserRole))
+    .withMessage('Invalid role')
+], async (req, res) => {
+  try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: errors.array().reduce((acc, error) => {
+          acc[error.param] = error.msg;
+          return acc;
+        }, {})
+      });
+    }
+
+    const { firstName, lastName, email, password, role, emailVerified } = req.body;
+
+    // Check if trying to create SuperAdmin
+    if (role === UserRole.SUPERADMIN && req.user.role !== UserRole.SUPERADMIN) {
+      return res.status(403).json({ 
+        message: 'Only SuperAdmins can create SuperAdmin users' 
+      });
+    }
+
+    // Check if user already exists
+    let existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ 
+        message: 'User with this email already exists' 
+      });
+    }
+
+    // Create new user
+    const newUser = new User({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role: role || UserRole.USER,
+      emailVerified: emailVerified || false
+    });
+
+    await newUser.save();
+
+    // Return user data without password
+    const userData = {
+      id: newUser._id,
+      firstName: newUser.firstName,
+      lastName: newUser.lastName,
+      email: newUser.email,
+      role: newUser.role,
+      emailVerified: newUser.emailVerified,
+      createdAt: newUser.createdAt
+    };
+
+    res.status(201).json({
+      user: userData,
+      message: 'User created successfully'
+    });
+
+  } catch (error) {
+    console.error('Error creating user:', error);
+    
+    // Handle duplicate email error
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        message: 'User with this email already exists' 
+      });
+    }
+    
+    res.status(500).json({ message: 'Server error while creating user' });
+  }
+});
+
+// Don't forget to import the validation at the top of your admin.js file:
+// const { body, validationResult } = require('express-validator');
 
 // @route   GET /api/admin/users/:id
 // @desc    Get detailed information for a specific user

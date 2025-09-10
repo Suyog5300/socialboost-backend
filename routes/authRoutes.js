@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const { User, UserRole } = require('../models/User');
 const { auth } = require('../middleware/auth');
 const { sendEmail, getVerificationEmailHtml, getPasswordResetEmailHtml, sendOTPEmail } = require('../utils/emailService');
+const passport = require('passport');
+const Subscription = require('../models/Subscription');
+const Campaign = require('../models/Campaign');
 
 const router = express.Router();
 
@@ -46,28 +49,13 @@ router.post(
         lastName,
         email,
         password,
-        role: UserRole.USER // Default role
+        role: UserRole.USER
       });
 
       // Generate email verification token
       const verificationToken = user.generateEmailVerificationToken();
 
       await user.save();
-
-      // Create verification URL - Use frontend port 5173 for Vite
-      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verificationToken}`;
-
-      // Send verification email - Use try/catch to prevent email errors from breaking registration
-      try {
-        await sendEmail({
-          email: user.email,
-          subject: 'Please verify your email',
-          html: getVerificationEmailHtml(user.firstName, verificationUrl)
-        });
-      } catch (emailError) {
-        // Log the error but continue with registration
-        console.error('Email sending failed, but registration will continue:', emailError.message);
-      }
 
       // Generate JWT token
       const token = user.generateAuthToken();
@@ -90,17 +78,74 @@ router.post(
       if (process.env.NODE_ENV !== 'production') {
         responseData.devInfo = {
           note: 'This information is only included in development mode',
-          verificationUrl: verificationUrl
+          verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verificationToken}`
         };
       }
 
+      // Send the response first
       res.status(201).json(responseData);
+
+      // Create verification URL - Use frontend port 5173 for Vite
+      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verificationToken}`;
+
+      // Send verification email after response - non-blocking
+      // Use try/catch to prevent email errors from affecting anything else
+      try {
+        sendEmail({
+          email: user.email,
+          subject: 'Please verify your email',
+          html: getVerificationEmailHtml(user.firstName, verificationUrl)
+        }).catch(emailError => {
+          console.error('Email sending failed:', emailError.message);
+        });
+      } catch (emailError) {
+        console.error('Email setup failed:', emailError.message);
+      }
+
     } catch (error) {
       console.error('Error in register:', error);
       res.status(500).json({ message: 'Server error' });
     }
   }
 );
+
+// Helper function to determine redirect URL based on user data
+const getRedirectUrl = async (user) => {
+  try {
+    // For admin and superadmin users, redirect to admin dashboard
+    if (user.role === 'admin' || user.role === 'superadmin') {
+      return '/admin';
+    }
+    
+    // For regular users, check if they have campaigns or subscriptions
+    if (user.role === 'user') {
+      // Check for active subscription
+      const hasActiveSubscription = await Subscription.findOne({
+        user: user._id,
+        status: 'active'
+      });
+      
+      // Check for any campaigns
+      const hasCampaigns = await Campaign.findOne({
+        user: user._id
+      });
+      
+      // If user has subscription or campaigns, redirect to main website
+      if (hasActiveSubscription || hasCampaigns) {
+        return '/'; // Main website
+      } else {
+        // No subscription or campaigns, redirect to campaign preferences
+        return '/pricing';
+      }
+    }
+    
+    // Default fallback
+    return '/dashboard';
+  } catch (error) {
+    console.error('Error determining redirect URL:', error);
+    return '/dashboard'; // Fallback
+  }
+};
 
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
@@ -114,7 +159,6 @@ router.post(
     body('password').if(body('otp').not().exists()).exists().withMessage('Password is required'),
     body('otp').optional().isLength({ min: 6, max: 6 }).withMessage('OTP must be a 6-digit code')
   ],
-
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -167,12 +211,15 @@ router.post(
         // Set cookie with the token
         res.cookie('token', token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production', // secure in production
-          sameSite: 'lax', // Helps with CSRF
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
-        // Return full user data after successful authentication
+        // Determine redirect URL based on user role and data
+        const redirectUrl = await getRedirectUrl(user);
+
+        // Return full user data after successful authentication with redirect URL
         return res.json({
           token,
           user: {
@@ -182,7 +229,8 @@ router.post(
             email: user.email,
             role: user.role,
             emailVerified: user.emailVerified
-          }
+          },
+          redirectUrl // Add this field for conditional redirects
         });
       } 
       // If no OTP, verify password
@@ -298,6 +346,7 @@ router.get('/api/user-profile', auth, (req, res) => {
 // @route   GET /api/auth/verify-email/:token
 // @desc    Verify email address
 // @access  Public
+// In your auth.js file
 router.get('/verify-email/:token', async (req, res) => {
   try {
     // Hash the token from params
@@ -312,6 +361,7 @@ router.get('/verify-email/:token', async (req, res) => {
       emailVerificationExpires: { $gt: Date.now() }
     });
 
+    // This check is critical - do not remove it
     if (!user) {
       return res.status(400).json({ message: 'Invalid or expired token' });
     }
@@ -323,12 +373,12 @@ router.get('/verify-email/:token', async (req, res) => {
 
     await user.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Email verified successfully! You can now log in.'
     });
   } catch (error) {
     console.error('Error verifying email:', error);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -503,5 +553,50 @@ router.get('/me', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// Add these routes to your auth.js file
+
+// Google OAuth routes
+// Add these routes to your /routes/authRoutes.js file
+
+// Google OAuth routes
+router.get(
+  '/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+// Update your Google callback handler in /backend/routes/authRoutes.js
+
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  async (req, res) => {
+    try {
+      // Generate JWT token
+      const token = req.user.generateAuthToken();
+      
+      // Set cookie with the token
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+      
+      // Determine redirect URL based on user role and data
+      const redirectUrl = await getRedirectUrl(req.user);
+      
+      // Use environment variable for frontend URL
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      
+      // Redirect to frontend with token and redirect URL
+      res.redirect(`${frontendUrl}/auth-success?token=${token}&redirectUrl=${encodeURIComponent(redirectUrl)}`);
+    } catch (error) {
+      console.error('Google auth callback error:', error);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      res.redirect(`${frontendUrl}/login?error=auth_failed`);
+    }
+  }
+);
 
 module.exports = router;

@@ -12,16 +12,14 @@ const Campaign = require('../models/Campaign');
 const { User } = require('../models/User');
 const { sendSubscriptionConfirmationEmail } = require('../utils/emailService');
 
-// @route   POST /api/create-checkout-session
+// @route   POST /api/stripe/create-checkout-session
 // @desc    Create a Stripe checkout session
 // @access  Private
-// Update the create-checkout-session route in /backend/routes/stripe.js
-
-// Update the create-checkout-session route in /backend/routes/stripe.js
 router.post('/create-checkout-session', auth, async (req, res) => {
   try {
     const { planName, planPrice, billing, features, preferences, campaignId } = req.body;
     console.log("data:", req.body);
+    
     // Validate required fields
     if (!planName) {
       return res.status(400).json({ message: 'Plan name is required' });
@@ -97,9 +95,21 @@ router.post('/create-checkout-session', auth, async (req, res) => {
       }
     }
     
-    // Find or create Stripe customer
+    // Helper function to check if customer exists in Stripe
+    async function isCustomerMissing(customerId) {
+      try {
+        await stripe.customers.retrieve(customerId);
+        return false;
+      } catch (error) {
+        return error.type === 'StripeInvalidRequestError' && 
+               error.raw?.code === 'resource_missing';
+      }
+    }
+    
+    // Find or create Stripe customer with better error handling
     let customer;
     if (!req.user.stripeCustomerId) {
+      // No customer ID, create new one
       customer = await stripe.customers.create({
         email: req.user.email,
         name: `${req.user.firstName} ${req.user.lastName}`,
@@ -113,7 +123,28 @@ router.post('/create-checkout-session', auth, async (req, res) => {
         stripeCustomerId: customer.id
       });
     } else {
-      customer = { id: req.user.stripeCustomerId };
+      // Check if the customer ID is valid
+      const customerMissing = await isCustomerMissing(req.user.stripeCustomerId);
+      
+      if (customerMissing) {
+        // Customer doesn't exist in Stripe, create a new one
+        console.log(`Customer ${req.user.stripeCustomerId} not found in Stripe, creating new customer`);
+        customer = await stripe.customers.create({
+          email: req.user.email,
+          name: `${req.user.firstName} ${req.user.lastName}`,
+          metadata: {
+            userId: req.user._id.toString()
+          }
+        });
+        
+        // Update user with new customer ID
+        await User.findByIdAndUpdate(req.user._id, {
+          stripeCustomerId: customer.id
+        });
+      } else {
+        // Customer exists, use it
+        customer = { id: req.user.stripeCustomerId };
+      }
     }
     
     // Create line items for checkout
