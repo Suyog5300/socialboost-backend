@@ -1,14 +1,15 @@
-// /backend/models/User.js - Update the user model
+// /backend/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-// User roles enum
+// User roles enum - ADD MARKETER
 const UserRole = {
   USER: 'user',
   ADMIN: 'admin',
-  SUPERADMIN: 'superadmin'
+  SUPERADMIN: 'superadmin',
+  MARKETER: 'marketer'  // ✅ ADD THIS
 };
 
 const userSchema = new mongoose.Schema({
@@ -35,10 +36,9 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters long']
   },
-  // Add this to your User model schema
-stripeCustomerId: {
-  type: String
-},
+  stripeCustomerId: {
+    type: String
+  },
   role: {
     type: String,
     enum: Object.values(UserRole),
@@ -48,10 +48,8 @@ stripeCustomerId: {
     type: Boolean,
     default: false
   },
-    // Add these new fields for OTP
-    loginOtp: String,
-    loginOtpExpires: Date,
-    
+  loginOtp: String,
+  loginOtpExpires: Date,
   emailVerificationToken: String,
   emailVerificationExpires: Date,
   passwordResetToken: String,
@@ -89,52 +87,33 @@ userSchema.methods.generateAuthToken = function() {
 
 // Generate email verification token
 userSchema.methods.generateEmailVerificationToken = function() {
-  // Create token
   const verificationToken = crypto.randomBytes(32).toString('hex');
-  
-  // Hash the token and set to emailVerificationToken field
   this.emailVerificationToken = crypto
     .createHash('sha256')
     .update(verificationToken)
     .digest('hex');
-  
-  // Set expiration (24 hours)
   this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
-  
   return verificationToken;
 };
 
 // Generate password reset token
 userSchema.methods.generatePasswordResetToken = function() {
-  // Create token
   const resetToken = crypto.randomBytes(32).toString('hex');
-  
-  // Hash the token and set to passwordResetToken field
   this.passwordResetToken = crypto
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
-  
-  // Set expiration (10 minutes)
   this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
-  
   return resetToken;
 };
 
-
 userSchema.methods.generateLoginOTP = function() {
-  // Generate a 6-digit OTP code
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  
-  // Hash the OTP before storing
   this.loginOtp = crypto
     .createHash('sha256')
     .update(otp)
     .digest('hex');
-  
-  // Set OTP expiration (10 minutes)
   this.loginOtpExpires = Date.now() + 10 * 60 * 1000;
-  
   return otp;
 };
 

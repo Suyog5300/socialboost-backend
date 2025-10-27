@@ -63,6 +63,7 @@ app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/custombookings', require('./routes/customPlanBookingsRoutes'));
 app.use('/api/myOrders', require('./routes/userOrdersRoutes')); 
+app.use('/api/content', require('./routes/contentRoutes'));
 const metaEventsRoutes = require('./routes/metaEvents');
 
 // Add this line where you register other routes
