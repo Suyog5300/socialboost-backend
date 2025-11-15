@@ -15,6 +15,9 @@ const { sendSubscriptionConfirmationEmail } = require('../utils/emailService');
 // @route   POST /api/stripe/create-checkout-session
 // @desc    Create a Stripe checkout session
 // @access  Private
+// @route   POST /api/stripe/create-checkout-session
+// @desc    Create a Stripe checkout session (handles plan upgrades/downgrades)
+// @access  Private
 router.post('/create-checkout-session', auth, async (req, res) => {
   try {
     const { planName, planPrice, billing, features, preferences, campaignId } = req.body;
@@ -29,6 +32,33 @@ router.post('/create-checkout-session', auth, async (req, res) => {
     const price = parseFloat(planPrice);
     if (isNaN(price) || price <= 0) {
       return res.status(400).json({ message: 'Plan price must be a valid positive number' });
+    }
+    
+    // Check for existing active subscription
+    const existingSubscription = await Subscription.findOne({
+      user: req.user.id,
+      status: 'active'
+    });
+    
+    // If user has an active subscription, we need to handle the upgrade/downgrade
+    if (existingSubscription) {
+      console.log('User has existing subscription:', existingSubscription._id);
+      
+      // Cancel the old subscription in Stripe
+      if (existingSubscription.stripeSubscriptionId) {
+        try {
+          await stripe.subscriptions.cancel(existingSubscription.stripeSubscriptionId);
+          console.log('Cancelled old Stripe subscription:', existingSubscription.stripeSubscriptionId);
+        } catch (stripeError) {
+          console.error('Error cancelling old subscription in Stripe:', stripeError);
+          // Continue anyway - we'll update our database
+        }
+      }
+      
+      // Update the old subscription status in our database
+      existingSubscription.status = 'cancelled';
+      await existingSubscription.save();
+      console.log('Marked old subscription as cancelled in database');
     }
     
     let campaign;
@@ -179,7 +209,9 @@ router.post('/create-checkout-session', auth, async (req, res) => {
         planName,
         billing,
         amount: price.toString(), // Convert to string for metadata
-        features: JSON.stringify(features || [])
+        features: JSON.stringify(features || []),
+        isUpgrade: existingSubscription ? 'true' : 'false', // Track if this is an upgrade/change
+        oldSubscriptionId: existingSubscription ? existingSubscription._id.toString() : ''
       }
     });
     
@@ -393,6 +425,7 @@ router.post('/webhooks/stripe', async (req, res) => {
 });
 
 // Separate the event handling into dedicated functions
+// Separate the event handling into dedicated functions
 async function handleCheckoutSessionCompleted(session) {
   console.log('🟢 Processing checkout.session.completed');
   console.log('Session ID:', session.id);
@@ -403,13 +436,13 @@ async function handleCheckoutSessionCompleted(session) {
     throw new Error('Session metadata is missing');
   }
   
-  const { userId, campaignId, planId, planName, billing, amount } = session.metadata;
+  const { userId, campaignId, planId, planName, billing, amount, isUpgrade, oldSubscriptionId } = session.metadata;
   
   if (!userId || !campaignId || !planId) {
     throw new Error(`Missing required metadata: userId=${userId}, campaignId=${campaignId}, planId=${planId}`);
   }
   
-  // Check if this subscription has already been processed
+  // Check if this subscription was already processed
   const existingSubscription = await Subscription.findOne({
     stripeSubscriptionId: session.subscription
   });
@@ -417,6 +450,34 @@ async function handleCheckoutSessionCompleted(session) {
   if (existingSubscription) {
     console.log('✅ Subscription already processed:', existingSubscription._id);
     return;
+  }
+  
+  // If this is an upgrade/change, cancel the old subscription
+  if (isUpgrade === 'true' && oldSubscriptionId) {
+    console.log('🔄 This is a plan change, handling old subscription:', oldSubscriptionId);
+    
+    try {
+      const oldSub = await Subscription.findById(oldSubscriptionId);
+      if (oldSub && oldSub.status === 'active') {
+        // Make sure it's cancelled in Stripe (should already be done, but double-check)
+        if (oldSub.stripeSubscriptionId) {
+          try {
+            await stripe.subscriptions.cancel(oldSub.stripeSubscriptionId);
+            console.log('✅ Cancelled old Stripe subscription:', oldSub.stripeSubscriptionId);
+          } catch (stripeError) {
+            console.log('⚠️ Old subscription already cancelled in Stripe');
+          }
+        }
+        
+        // Update old subscription status
+        oldSub.status = 'cancelled';
+        await oldSub.save();
+        console.log('✅ Marked old subscription as cancelled');
+      }
+    } catch (error) {
+      console.error('⚠️ Error handling old subscription:', error);
+      // Continue with creating new subscription even if old one fails
+    }
   }
   
   // Get subscription details from Stripe
