@@ -2,8 +2,8 @@
 const axios = require('axios');
 
 // Your actual Pixel ID and access token
-const pixelId = '589529720483518';
-const accessToken = 'EAAQEmc9bFbQBO9ntsBn2M9hZCU3Tv4Vr2ZBzNaVIEMQxLt6CSKgqkETiiAXVc1wvZATF4O7DQkimgrn0dAz3kqE44vsDdO9peST8U4mUcgYFi495xZCDpQkye879US8VPikxyElOgEbJDstye00mNhdoIJKpmWpN4xtGTWlkYbSv6sw8wKpSV3UrzJL9SQZDZD';
+const pixelId = process.env.META_PIXEL_ID; // Make sure to set this in your environment variables
+const accessToken = process.env.META_ACCESS_TOKEN; // Make sure to set this in your environment variables
 
 // Get test code from Events Manager
 const testEventCode = 'TEST96702'; // Replace with code from Events Manager
