@@ -5,29 +5,34 @@ const { sendServerEvent } = require('../utils/metaConversionsAPI');
 
 router.post('/meta-conversions', async (req, res) => {
   try {
-    const { eventName, eventParams } = req.body;
-    
-    console.log('Received event:', eventName);
-    
-    // Validate request
+    const { eventName, eventParams, test_event_code } = req.body;
+
     if (!eventName || !eventParams) {
-      return res.status(400).json({ success: false, message: 'Missing event data' });
+      return res.status(400).json({
+        success: false,
+        message: 'Missing eventName or eventParams'
+      });
     }
-    
-    // Send to Meta Conversions API
-    const result = await sendServerEvent(eventName, eventParams, req);
-    
-    // Log response using the result variable (not response)
-    console.log('Received event details:', JSON.stringify(eventParams, null, 2));
-    console.log('Response from Meta:', result);
-    
-    res.status(200).json({ success: true, data: result });
+
+    console.log('Meta Event Received:', eventName);
+
+    const result = await sendServerEvent(
+      eventName,
+      eventParams,
+      req,
+      test_event_code // optional
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+
   } catch (error) {
-    console.error('Error processing Meta event:', error.message);
-    console.error('Error details:', error.response?.data || 'No additional details');
-    
-    res.status(500).json({ 
-      success: false, 
+    console.error('Meta Event Error:', error.response?.data || error.message);
+
+    return res.status(500).json({
+      success: false,
       error: error.message,
       details: error.response?.data
     });

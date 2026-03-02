@@ -2,77 +2,103 @@
 const axios = require('axios');
 const crypto = require('crypto');
 
-// Load from your environment variables
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const META_PIXEL_ID = process.env.META_PIXEL_ID;
 
-// Hash function for PII data
-const hashData = (data) => {
-  if (!data) return null;
-  const normalized = data.toLowerCase().trim();
+if (!META_ACCESS_TOKEN || !META_PIXEL_ID) {
+  console.warn("⚠️ META_ACCESS_TOKEN or META_PIXEL_ID is missing in environment variables");
+}
+
+// Hash helper (Meta requires lowercase + trimmed before hashing)
+const hashData = (value) => {
+  if (!value) return undefined;
+  const normalized = value.toString().toLowerCase().trim();
   return crypto.createHash('sha256').update(normalized).digest('hex');
 };
 
-// Send event to Meta Conversions API
-const sendServerEvent = async (eventName, eventData, req) => {
+const sendServerEvent = async (
+  eventName,
+  eventData,
+  req,
+  testEventCode = null
+) => {
   try {
-    // Prepare user data with matching parameters
+
+    // -----------------------------
+    // Prepare User Data
+    // -----------------------------
     const userData = {
-      // Client identifiers - critical for good matching
       client_ip_address: req.ip || req.connection.remoteAddress,
       client_user_agent: req.headers['user-agent'],
-      fbp: eventData.fbp, // Facebook Browser ID
-      fbc: eventData.fbc, // Facebook Click ID
-      
-      // Customer information parameters (hashed)
-      em: eventData.email ? hashData(eventData.email) : undefined,
-      fn: eventData.firstName ? hashData(eventData.firstName) : undefined,
-      ln: eventData.lastName ? hashData(eventData.lastName) : undefined,
-      ph: eventData.phone ? hashData(eventData.phone) : undefined,
-      ct: eventData.city ? hashData(eventData.city) : undefined,
-      st: eventData.state ? hashData(eventData.state) : undefined,
+
+      fbp: eventData.fbp,
+      fbc: eventData.fbc,
+
+      em: hashData(eventData.email),
+      fn: hashData(eventData.firstName),
+      ln: hashData(eventData.lastName),
+      ph: hashData(eventData.phone),
+      ct: hashData(eventData.city),
+      st: hashData(eventData.state),
       country: eventData.country,
-      external_id: eventData.userId ? hashData(eventData.userId) : undefined,
+      external_id: hashData(eventData.userId)
     };
-    
-    // Remove undefined values
+
+    // Remove undefined fields
     Object.keys(userData).forEach(key => {
-      if (userData[key] === undefined) delete userData[key];
+      if (!userData[key]) delete userData[key];
     });
 
-    // Prepare custom data
-    const customData = {};
-    
-    // Add standard e-commerce parameters if available
-    if (eventData.value) customData.value = eventData.value;
-    if (eventData.currency) customData.currency = eventData.currency;
-    if (eventData.contentIds) customData.content_ids = eventData.contentIds;
-    if (eventData.contentType) customData.content_type = eventData.contentType;
-    if (eventData.contentName) customData.content_name = eventData.contentName;
-    
-    // Prepare the event for Meta
+    // -----------------------------
+    // Prepare Custom Data
+    // -----------------------------
+    const customData = {
+      value: eventData.value,
+      currency: eventData.currency,
+      content_ids: eventData.contentIds,
+      content_type: eventData.contentType,
+      content_name: eventData.contentName
+    };
+
+    Object.keys(customData).forEach(key => {
+      if (!customData[key]) delete customData[key];
+    });
+
+    // -----------------------------
+    // Build Final Payload
+    // -----------------------------
     const eventRequest = {
       data: [{
         event_name: eventName,
-        event_time: Math.floor(eventData.eventTime || Date.now() / 1000),
+        event_time: Math.floor(Date.now() / 1000), // ALWAYS current
         action_source: 'website',
+        event_id: eventData.eventId, // Important for deduplication
         event_source_url: eventData.sourceUrl || req.headers.referer,
         user_data: userData,
         custom_data: customData
       }],
       access_token: META_ACCESS_TOKEN,
+      test_event_code: testEventCode || undefined
     };
-    
-    // Send to Meta Conversions API
+
+    // Remove test_event_code if null
+    if (!testEventCode) {
+      delete eventRequest.test_event_code;
+    }
+
+    console.log("📤 Sending to Meta:", JSON.stringify(eventRequest, null, 2));
+
     const response = await axios.post(
       `https://graph.facebook.com/v18.0/${META_PIXEL_ID}/events`,
       eventRequest
     );
-    
-    console.log('Conversions API event sent successfully:', response.data);
+
+    console.log("✅ Meta Response:", response.data);
+
     return response.data;
+
   } catch (error) {
-    console.error('Error sending Conversions API event:', error.response?.data || error.message);
+    console.error("❌ Meta API Error:", error.response?.data || error.message);
     throw error;
   }
 };
