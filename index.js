@@ -86,63 +86,6 @@ const hashData = (data) => {
   return crypto.createHash('sha256').update(data).digest('hex');
 };
 
-// Endpoint for Meta Conversions API
-app.post('/api/meta-conversions', async (req, res) => {
-  try {
-    const { eventName, eventParams, test_event_code } = req.body;
-
-    const pixelId = process.env.META_PIXEL_ID; // ⚠️ Don't take from frontend
-    const accessToken = process.env.META_ACCESS_TOKEN;
-
-    const data = {
-      data: [{
-        event_name: eventName,
-        event_time: eventParams.event_time,
-        action_source: eventParams.action_source,
-        event_id: eventParams.event_id, // IMPORTANT
-        user_data: {
-          client_ip_address: req.ip,
-          client_user_agent: req.headers['user-agent'],
-          fbp: eventParams.fbp,
-          fbc: eventParams.fbc,
-          em: eventParams.em,
-          fn: eventParams.fn,
-          ln: eventParams.ln,
-          ph: eventParams.ph,
-          ct: eventParams.ct,
-          st: eventParams.st,
-          country: eventParams.country
-        },
-        custom_data: {
-          value: eventParams.value,
-          currency: eventParams.currency,
-          content_ids: eventParams.content_ids,
-          content_type: eventParams.content_type
-        }
-      }],
-      test_event_code: test_event_code   // 🔥 THIS IS WHAT YOU ARE MISSING
-    };
-
-    const response = await axios.post(
-      `https://graph.facebook.com/v18.0/${pixelId}/events`,
-      data,
-      { params: { access_token: accessToken } }
-    );
-
-    res.json({ success: true, data: response.data });
-
-  } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).json({ success: false });
-  }
-});
-
-// Add to server.js
-app.get('/api/meta-debug', (req, res) => {
-  console.log('Meta debug endpoint accessed');
-  res.status(200).json({ success: true, message: 'Meta Conversions API is accessible' });
-});
-
 // Make MongoDB connection resilient
 const connectDB = async () => {
   try {
