@@ -89,30 +89,20 @@ const hashData = (data) => {
 // Endpoint for Meta Conversions API
 app.post('/api/meta-conversions', async (req, res) => {
   try {
-    const { pixelId, eventName, eventParams } = req.body;
-    
-    // Get access token from environment variables
+    const { eventName, eventParams, test_event_code } = req.body;
+
+    const pixelId = process.env.META_PIXEL_ID; // ⚠️ Don't take from frontend
     const accessToken = process.env.META_ACCESS_TOKEN;
-    
-    // Properly hash data on server side if not already hashed
-    // This ensures data is always properly hashed before sending to Meta
-    if (eventParams.em && eventParams.em.length !== 64) {
-      eventParams.em = hashData(eventParams.em);
-    }
-    if (eventParams.fn && eventParams.fn.length !== 64) {
-      eventParams.fn = hashData(eventParams.fn);
-    }
-    // ...repeat for other PII fields...
-    
-    // Prepare data for Meta
+
     const data = {
       data: [{
         event_name: eventName,
         event_time: eventParams.event_time,
         action_source: eventParams.action_source,
+        event_id: eventParams.event_id, // IMPORTANT
         user_data: {
           client_ip_address: req.ip,
-          client_user_agent: eventParams.client_user_agent,
+          client_user_agent: req.headers['user-agent'],
           fbp: eventParams.fbp,
           fbc: eventParams.fbc,
           em: eventParams.em,
@@ -130,19 +120,20 @@ app.post('/api/meta-conversions', async (req, res) => {
           content_type: eventParams.content_type
         }
       }],
-      access_token: accessToken
+      test_event_code: test_event_code   // 🔥 THIS IS WHAT YOU ARE MISSING
     };
-    
-    // Send to Meta
+
     const response = await axios.post(
       `https://graph.facebook.com/v18.0/${pixelId}/events`,
-      data
+      data,
+      { params: { access_token: accessToken } }
     );
-    
-    res.status(200).json({ success: true, data: response.data });
+
+    res.json({ success: true, data: response.data });
+
   } catch (error) {
-    console.error('Error sending to Meta Conversions API:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error(error.response?.data || error.message);
+    res.status(500).json({ success: false });
   }
 });
 
